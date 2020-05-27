@@ -30,6 +30,12 @@ if [[ ! $engine =~ ^[PpDd]$ ]]
 then
     exit 1
 fi
+if [[ $engine =~ ^[Pp]$ ]]
+then
+    engine=podman
+else
+    engine=docker
+fi
 read -p '>>> Setup DHCP? Make sure no external DHCP exist (y|n) [y]: ' dhcp
 if [ -z "$dhcp" ]
 then
@@ -87,22 +93,49 @@ fi
 printf "\e[1m--- Downloading files\e[0m\n"
 kernel=fedora-coreos-31.20200505.3.0-live-kernel-x86_64
 img=fedora-coreos-31.20200505.3.0-live-initramfs.x86_64.img
-wget https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/31.20200505.3.0/x86_64/$kernel -P ./autodeploy.tmp 
-wget https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/31.20200505.3.0/x86_64/$img -P ./autodeploy.tmp 
+#wget https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/31.20200505.3.0/x86_64/$kernel -P ./autodeploy.tmp 
+#wget https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/31.20200505.3.0/x86_64/$img -P ./autodeploy.tmp 
 
 printf "\e[1m--- Ignoring checksum check\e[0m\n"
 
-printf "\e[1m--- Installing required packages\e[0m\n"
-if [[ $engine =~ ^[p]$ ]]
-then
-    engine="podman"
+printf "\e[1m--- Checking if python3 installed\e[0m\n"
+if [ -z "$(rpm -qa | grep python3)" ]; then
+  echo "... Installing python3"
+  yum install python3 -y
 else
-    engine="docker"
+  echo "... Package python3 installed, skipping"
 fi
-yum install $engine -y
-yum install python3 -y
 
-printf "\e[1m--- DHCP\e[0m\n"
+fccsetup() {
+  podman pull quay.io/coreos/fcct:release
+  podman run -i --rm quay.io/coreos/fcct:release --pretty --strict < config.fcc > transpiled_config.ign
+}
 
+printf "\e[1m--- Checking if $engine installed\e[0m\n"
+if [ -z "$(rpm -qa | grep $engine)" ]; then
+  echo "... Installing $engine"
+  yum install $engine -y
+else
+  echo "... Package $engine installed, skipping"
+fi
+
+dhcpsetup() {
+  systemctl start dhcp
+  podman run -i --rm quay.io/coreos/fcct:release --pretty --strict < config.fcc > transpiled_config.ign
+}
+
+printf "\e[1m--- Checking dhcp\e[0m\n"
+if [[ $dhcp == y ]]; then
+  echo "... Using server's dhcp"
+  printf "\e[1m--- Checking if dhcp installed\e[0m\n"  
+  if [ -z "$(rpm -qa | grep dhcp)" ]; then
+    echo "--- Installing dhcp"
+    yum install dhcp -y
+  else
+    echo "... Package dhcp installed, skipping"
+  fi
+else
+  echo "... Using external dhcp"
+fi
 
 
